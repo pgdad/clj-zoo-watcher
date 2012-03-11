@@ -1,13 +1,24 @@
 # clj-zoo-watcher
 
-FIXME: write description
+'Mirrow' a zookeeper node hierachy into an inmemery zipper.
+Think of zookeeper emhereal nodes as files and persistent nodes as directories.
 
 ## Usage
 
-FIXME: write
+Look for functions cdo0, cdo data-example, print-tree  and cdo2 in core.clj
+
+Make sure to have zookeeper running on localhost, default port.
+
+(def w (cdo0))
+(cdo w)
+(example-data w)
+(print-tree (wzipper w))
+(cdo2 w)
+(print-tree (wzipper w))
+
 
 ## License
 
-Copyright (C) 2012 FIXME
+Copyright (C) 2012 pgdad
 
 Distributed under the Eclipse Public License, the same as Clojure.
