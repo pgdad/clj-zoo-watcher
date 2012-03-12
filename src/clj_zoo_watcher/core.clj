@@ -6,6 +6,10 @@
 
 (def ^:dynamic *keepers* "localhost")
 
+(declare con-watcher)
+
+(declare start-watching-root)
+
 (defn watcher
   "client is a zookeeper client connection
 root is a zookeeper node path
@@ -24,14 +28,18 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   'data' is a java binary array
 "
   [client root dir-created dir-deleted file-created file-deleted file-data-changed]
-  (ref {:client client
+  (let [w {:client client
         :root root
         :zipper (tz/tree-zip (clj_tree_zipper.core.Directory. "/" nil))
         :dir-created dir-created
         :dir-deleted dir-deleted
         :file-created file-created
         :file-deleted file-deleted
-        :file-data-changed file-data-changed}))
+           :file-data-changed file-data-changed}
+        w-ref (ref w)]
+    (zk/register-watcher client (partial con-watcher @w-ref))
+    (start-watching-root w-ref root)
+    w-ref))
 
 (defn- wclient
   [w]
@@ -258,8 +266,6 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
                    (fn [file-node data]
                      (println (str "NODE DATA CALLBACK: "
                                    file-node " DATA: " (String. data "UTF-8")))))]
-    (zk/register-watcher (:client @w) (partial con-watcher @w))
-    (start-watching-root w node)
     w))
 
 (defn cdo
