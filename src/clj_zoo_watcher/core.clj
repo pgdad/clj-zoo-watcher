@@ -123,13 +123,22 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
 (defn- file-data-watcher
   [watcher-ref event]
   (let [path (:path event)
-        event-type (:event-type event)]
-    (if-not (= event-type :NodeDeleted)
-      (try
-        (let [data (:data (zk/data (wclient watcher-ref) path
-                          :watcher (partial file-data-watcher watcher-ref)))]
-          (call-file-data-changed watcher-ref path data))
-        (catch Exception ex (println (str "DATA WATCHER EXCEPTION: " ex)))))))
+        event-type (:event-type event)
+        keeper-state (:keeper-state event)]
+    (if (and (= event-type :None) (= keeper-state :SyncConnected))
+      nil
+      (if-not (= event-type :NodeDeleted)
+        (try
+          (let [data (:data (zk/data (wclient watcher-ref) path
+                                     :watcher (partial file-data-watcher
+                                                       watcher-ref)))]
+            (call-file-data-changed watcher-ref path data))
+          (catch Exception ex (println (str "DATA WATCHER EXCEPTION: " ex))))
+        (if-not (:path event)
+          (println (str "FILE DATA WATCHER PATHLESS EVENT: " event))
+          (println (str "FILE DATA WATCHER UNHANDLED EVENT: " event)))
+        ))
+    ))
 
 (defn- add-z-kid
   [watcher-ref parent-z-path name directory node]
