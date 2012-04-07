@@ -27,14 +27,15 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   It is a function of the form (fn [file-node data] ....) where data is the new data content of the node.
   'data' is a java binary array
 "
-  [client root dir-created dir-deleted file-created file-deleted file-data-changed]
+  [client root connwatcher dir-created dir-deleted file-created file-deleted file-data-changed]
   (let [w {:client client
-        :root root
-        :zipper (tz/tree-zip (clj_tree_zipper.core.Directory. "/" nil))
-        :dir-created dir-created
-        :dir-deleted dir-deleted
-        :file-created file-created
-        :file-deleted file-deleted
+           :connwatcher connwatcher
+           :root root
+           :zipper (tz/tree-zip (clj_tree_zipper.core.Directory. "/" nil))
+           :dir-created dir-created
+           :dir-deleted dir-deleted
+           :file-created file-created
+           :file-deleted file-deleted
            :file-data-changed file-data-changed}
         w-ref (ref w)]
     (zk/register-watcher client (partial con-watcher @w-ref))
@@ -86,6 +87,8 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
 (defn- con-watcher
   [watcher event]
   (println (str "CONN WATCHER: " event))
+  (let [cwatcher (:connwatcher watcher)]
+    (cwatcher event))
   (zk/register-watcher (:client watcher) (partial con-watcher watcher)))
 
 (defn- node-zipper-path
@@ -263,11 +266,16 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
                        loc))))))
 
 
+(defn- test-connwatcher
+  [event]
+  (println (str "TEST CONNWATCHER: " event)))
+
 (defn cdo0
   []
   (let [client (zk/connect *keepers*)
         node "/testnode"
         w (watcher client "/testnode"
+                   test-connwatcher
                    (fn [dir-node] (println (str "DIRECTORY CREATED CALLBACK: " dir-node)))
                    (fn [dir-node] (println (str "DIRECTORY DELETED CALLBACK: " dir-node)))
                    (fn [file-node] (println (str "NODE CREATED CALLBACK: " file-node)))
