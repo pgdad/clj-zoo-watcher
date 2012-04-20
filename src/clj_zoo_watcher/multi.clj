@@ -32,8 +32,9 @@
                                             (:dir-deleted m)
                                             (:file-created m)
                                             (:file-deleted m)
-                                            (:file-data-changed m))))))))
-  (zk/children connection node :watcher (partial watch-for-children connection m-ref node)))
+                                            (:file-data-changed m)
+                                            (:data-ref m)))))))
+  (zk/children connection node :watcher (partial watch-for-children connection m-ref node))))
 
 (defn child-watchers
   [connection
@@ -42,7 +43,7 @@
    ;; kids-ref is a ref of a map, keyed by child node name, value is watcher
    kids-ref
    ;; rest of the args are using in the core/watcher
-   connwatcher dir-created dir-deleted file-created file-deleted file-data-changed]
+   connwatcher dir-created dir-deleted file-created file-deleted file-data-changed data-ref]
   (let [m-ref (ref {:kids-ref kids-ref
                     :connection connection
                     :conn-watcher connwatcher
@@ -51,7 +52,8 @@
                     :dir-deleted dir-deleted
                     :file-created file-created
                     :file-deleted file-deleted
-                    :file-data-changed file-data-changed})]
+                    :file-data-changed file-data-changed
+                    :data-ref data-ref})]
     (start-watching connection root m-ref)
     m-ref)
   )

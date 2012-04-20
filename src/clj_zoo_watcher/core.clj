@@ -14,20 +14,20 @@
   "client is a zookeeper client connection
 root is a zookeeper node path
 dir-created is a function that is called when a zookeeper 'directory' node is created
-  It is a function of the form (fn [dir-node] ....) where dir-node is the zookeper path.
+  It is a function of the form (fn [data-ref dir-node] ....) where dir-node is the zookeper path.
   'directory' node is understood to be a persistent zookeeper node
 dir-deleted is a function that is called when a zookeeper 'directory' node is deleted
-  It is a fuction of the form (fn [dir-node] ....)
+  It is a fuction of the form (fn [data-ref dir-node] ....)
 file-created is a function that is called when a zookeeper 'file' node is created
-  It is a function of the form (fn [file-node] ....) where file-node is a the zookeeper path.
+  It is a function of the form (fn [data-ref file-node] ....) where file-node is a the zookeeper path.
   'file' node is understood to be a ephemeral zookeeper node
 file-deleted is a function that is called when a zookeeper 'file' node is deleted
-  It is a function of the form (fn [file-node] ...)
+  It is a function of the form (fn [data-ref file-node] ...)
 file-data-changed is a function that is called when a zookeeper 'file' node data is changed.
-  It is a function of the form (fn [file-node data] ....) where data is the new data content of the node.
+  It is a function of the form (fn [data-ref file-node data] ....) where data is the new data content of the node.
   'data' is a java binary array
 "
-  [client root connwatcher dir-created dir-deleted file-created file-deleted file-data-changed]
+  [client root connwatcher dir-created dir-deleted file-created file-deleted file-data-changed data-ref]
   (let [w {:client client
            :connwatcher connwatcher
            :root root
@@ -36,7 +36,8 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
            :dir-deleted dir-deleted
            :file-created file-created
            :file-deleted file-deleted
-           :file-data-changed file-data-changed}
+           :file-data-changed file-data-changed
+           :data-ref data-ref}
         w-ref (ref w)]
     (zk/register-watcher client (partial con-watcher @w-ref))
     (start-watching-root w-ref root)
@@ -57,27 +58,27 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
 (defn- call-dir-created
   [w dir]
   (let [f (:dir-created @w)]
-    (f dir)))
+    (f (:data-ref @w) dir)))
 
 (defn- call-dir-deleted
   [w dir]
   (let [f (:dir-deleted @w)]
-    (f dir)))
+    (f (:data-ref @w) dir)))
 
 (defn- call-file-created
   [w file]
   (let [f (:file-created @w)]
-    (f file)))
+    (f (:data-ref @w) file)))
 
 (defn- call-file-deleted
   [w file]
   (let [f (:file-deleted @w)]
-    (f file)))
+    (f (:data-ref @w) file)))
 
 (defn- call-file-data-changed
   [w file data]
   (let [f (:file-data-changed @w)]
-    (f file data)))
+    (f (:data-ref @w) file data)))
 
 (defn- persistent?
   [client node]
