@@ -256,7 +256,6 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   (let [exists (zk/exists (wclient watcher-ref) node
                           :watcher (partial start-watching-root
                                             watcher-ref node))]
-    (println (str "START ROOT: " event))
     (if (not (= 0  (count event)))
       (case (:event-type (first event))
         (println (str "START WATCHING ROOT UNCAUGHT EVENT: " (first event)))))

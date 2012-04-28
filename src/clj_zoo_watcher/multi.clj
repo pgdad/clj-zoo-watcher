@@ -40,7 +40,6 @@
   [connection m-ref node event]
   (if event
     (println (str "WATCHING MULTI NODE PARENT: " node " :: EVENT :: " event)))
-  (println (str "EXISTS WATCHER: " @m-ref "::" node))
   (zk/exists connection node :watcher (partial exists-watcher connection m-ref node)))
 
 (defn- start-watching
