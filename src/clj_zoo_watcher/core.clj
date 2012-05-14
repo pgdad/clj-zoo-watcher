@@ -145,7 +145,8 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
               (println (str "EVENT: " event)))))
         (if-not (:path event)
           (println (str "FILE DATA WATCHER PATHLESS EVENT: " event))
-          (println (str "FILE DATA WATCHER UNHANDLED EVENT: " event)))
+          (if-not (= (:event-type :NodeDeleted))
+            (println (str "FILE DATA WATCHER UNHANDLED EVENT: " event))))
         ))
     ))
 
@@ -208,7 +209,10 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
             (try
               (remove-z-kid watcher-ref zipper-path
                             kid  (str node "/" kid))
-              (catch Exception ex (println (str "EXCEPTION IN NODE CHANGED: " ex)))))
+              (catch Exception ex
+                (do
+                  (println (str "EXCEPTION IN NODE CHANGED: " ex))
+                  (.printStackTrace ex)))))
           (doseq [kid (added-children n-kids z-kids)]
             (let [kid-node (str node "/" kid)
                   directory (persistent? client kid-node)]
