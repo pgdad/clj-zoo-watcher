@@ -1,4 +1,4 @@
-(defproject clj-zoo-watcher "1.0.7"
+(defproject clj-zoo-watcher "1.0.8"
   :description "FIXME: write description"
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [clj-tree-zipper "1.0.0"]

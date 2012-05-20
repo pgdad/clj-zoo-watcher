@@ -143,17 +143,13 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
               (. ex printStackTrace)
               (println "==================")
               (println (str "EVENT: " event)))))
-        (if-not (:path event)
-          (println (str "FILE DATA WATCHER PATHLESS EVENT: " event))
-          (if-not (= (:event-type :NodeDeleted))
-            (println (str "FILE DATA WATCHER UNHANDLED EVENT: " event))))
         ))
     ))
 
 (defn- add-z-kid
   [watcher-ref parent-z-path name directory node]
   (dosync
-   (let [watcher (ensure watcher-ref)
+   (let [watcher @watcher-ref
          zipper (wzipper watcher-ref)
          z-element (zipper-element name directory)
          z-kids (set (z-named-children zipper parent-z-path))
@@ -173,12 +169,12 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   [watcher-ref parent-z-path name node-path]
   (dosync
    (try
-     (let [watcher (ensure watcher-ref)
+     (let [watcher @watcher-ref
            zipper (wzipper watcher-ref)
            zipper-path (flatten (list parent-z-path name))
            ])
      (catch Exception ex (println (str "EXECTION IN BRANCH:" ex))))
-   (let [watcher (ensure watcher-ref)
+   (let [watcher @watcher-ref
          zipper (wzipper watcher-ref)
          zipper-path (flatten (list parent-z-path name))
          branch? (z/branch? (tz/find-path zipper zipper-path))
@@ -245,7 +241,7 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
             z-path (node-zipper-path root child-node)]
         (if-not (zipper-path-exists watcher-ref z-path)
           (dosync
-           (let [watcher (ensure watcher-ref)
+           (let [watcher @watcher-ref
                  zipper (wzipper watcher-ref)
                  directory (persistent? (wclient watcher-ref) child-node)]
              (add-z-kid watcher-ref (drop-last z-path)
@@ -302,7 +298,7 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   (zk/create (wclient watcher-ref) "/testnode/Z2/d2" :persistent? true)
   (zk/create (wclient watcher-ref) "/testnode/Z1/d1/file1.txt" :persistent? false)
   (zk/create (wclient watcher-ref) "/testnode/Z2/d2/file2.txt" :persistent? false)
-  (dosync   (let [watcher (ensure watcher-ref)] (print-tree (wzipper watcher-ref))))
+  (dosync   (let [watcher @watcher-ref] (print-tree (wzipper watcher-ref))))
   watcher-ref)
 
 
@@ -310,7 +306,7 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   [watcher-ref]
   (zk/delete-all (wclient watcher-ref) "/testnode/Z2")
   (zk/delete-all (wclient watcher-ref) "/testnode/Z1")
-  (dosync   (let [watcher (ensure watcher-ref)] (print-tree (wzipper watcher-ref)))))
+  (dosync   (let [watcher @watcher-ref] (print-tree (wzipper watcher-ref)))))
 
 (defn data-example
   [watcher-ref]
