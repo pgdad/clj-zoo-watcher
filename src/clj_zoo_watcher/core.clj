@@ -1,6 +1,5 @@
 (ns clj-zoo-watcher.core
   (:require [zookeeper :as zk]
-            [clj-tree-zipper.core :as tz]
             [clojure.set]
             [clojure.zip :as z]))
 
@@ -31,7 +30,8 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   (let [w {:client client
            :connwatcher connwatcher
            :root root
-           :zipper (tz/tree-zip (clj_tree_zipper.core.Directory. "/" nil))
+           :watched-dir-nodes-ref (ref #{})
+           :watched-file-nodes-ref (ref #{})
            :dir-created dir-created
            :dir-deleted dir-deleted
            :file-created file-created
@@ -50,10 +50,6 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
 (defn- wroot
   [w]
   (:root @w))
-
-(defn- wzipper
-  [w]
-  (:zipper @w))
 
 (defn- call-dir-created
   [w dir]
@@ -92,37 +88,15 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
     (cwatcher event))
   (zk/register-watcher (:client watcher) (partial con-watcher watcher)))
 
-(defn- node-zipper-path
-  "given root node and zk node, return 'zipper-field path'"
-  [root node]
-  (if (= root node)
-    '("/")
-    (let [remove-root (clojure.string/replace-first node (str root "/") "")
-          zipper-path (cons "/" (seq (clojure.string/split remove-root
-                                                           (re-pattern "/"))))]
-      zipper-path)))
-
 (defn- added-children
   "return entries that exist in node-children but not in z-children"
-  [node-children z-children]
-  (clojure.set/difference node-children z-children))
+  [new-children old-children]
+  (clojure.set/difference new-children old-children))
 
 (defn- removed-children
   "return return entries that exist in z-children but not in node-children"
-  [node-children z-children]
-  (clojure.set/difference z-children node-children))
-
-(defn- z-named-children
-  [zipper zipper-path]
-  (let [z-node (tz/find-path zipper zipper-path)
-        z-child-nodes (z/children z-node)]
-    (map (fn [child] (:name child)) z-child-nodes)))
-
-(defn- zipper-element
-  [name directory]
-  (if directory
-    (clj_tree_zipper.core.Directory. name nil)
-    (clj_tree_zipper.core.File. name)))
+  [new-children old-children]
+  (clojure.set/difference old-children new-children))
 
 (defn- file-data-watcher
   [watcher-ref event]
@@ -146,89 +120,73 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
         ))
     ))
 
-(defn- add-z-kid
-  [watcher-ref parent-z-path name directory node]
+(defn- add-kid
+  [watcher-ref directory node]
   (dosync
    (let [watcher @watcher-ref
-         zipper (wzipper watcher-ref)
-         z-element (zipper-element name directory)
-         z-kids (set (z-named-children zipper parent-z-path))
-         ;; only create a new tree if the element does not exist already
-         contains (contains? z-kids name)
-         new-tree (if-not contains
-                    (tz/add-at-path zipper parent-z-path z-element)
-                    nil) ]
-     (if new-tree
-       (do
-         (alter watcher-ref (fn [& args] (assoc watcher :zipper new-tree)))
-         (if-not directory
-           (let [data (:data (zk/data (wclient watcher-ref) node
-                                      :watcher (partial file-data-watcher watcher-ref)))])))))))
+         watched-dir-nodes-ref (:watched-dir-nodes-ref watcher)
+         watched-file-nodes-ref (:watched-file-nodes-ref watcher)]
+     
+     (if directory
+       (alter watched-dir-nodes-ref conj node)
+       (alter watched-file-nodes-ref conj node))
+     
+     (if-not directory
+       (let [data (:data (zk/data (wclient watcher-ref) node
+                                  :watcher (partial file-data-watcher watcher-ref)))])))))
 
-(defn- remove-z-kid
-  [watcher-ref parent-z-path name node-path]
+(defn- remove-kid
+  [watcher-ref node-path]
   (dosync
-   (try
-     (let [watcher @watcher-ref
-           zipper (wzipper watcher-ref)
-           zipper-path (flatten (list parent-z-path name))
-           ])
-     (catch Exception ex (println (str "EXECTION IN BRANCH:" ex))))
    (let [watcher @watcher-ref
-         zipper (wzipper watcher-ref)
-         zipper-path (flatten (list parent-z-path name))
-         branch? (z/branch? (tz/find-path zipper zipper-path))
-         new-tree (tz/remove-path zipper zipper-path)]
-     (if new-tree
+         watched-dir-nodes-ref (:watched-dir-nodes-ref watcher)
+         watched-file-nodes-ref (:watched-file-nodes-ref watcher)]
+     
+     (if (contains? @watched-dir-nodes-ref node-path)
        (do
-         (alter watcher-ref (fn [& args] (assoc watcher :zipper new-tree)))
-         (if branch?
-           (call-dir-deleted watcher-ref node-path)
-           (call-file-deleted watcher-ref node-path)))))))
+         (alter watched-dir-nodes-ref disj node-path)
+         (call-dir-deleted watcher-ref node-path))
+       (do
+         (alter watched-file-nodes-ref disj node-path)
+         (call-file-deleted watcher-ref node-path))))))
 
 (declare start-watching-children)
 
 (defn- child-watcher
   [watcher-ref node event]
-  (let [children (zk/children (wclient watcher-ref) node :watcher (partial child-watcher watcher-ref node))]
+  (let [client (wclient watcher-ref)
+        children (zk/children (wclient watcher-ref) node :watcher (partial child-watcher watcher-ref node))]
     (case (:event-type event)
       :NodeChildrenChanged
       (do
         (let [root (wroot watcher-ref)
-              client (wclient watcher-ref)
-              zipper-path (node-zipper-path root node)
-              z-kids (set (z-named-children (wzipper watcher-ref) zipper-path))
+              old-kids (clojure.set/union
+                        @(:watched-dir-nodes-ref @watcher-ref)
+                        @(:watched-file-nodes-ref @watcher-ref))
+              
               n-kids (set children)
-              additions (added-children n-kids z-kids)
-              removals (removed-children n-kids z-kids)]
+              new-kids (set (map #(str node "/" %) children))
+              additions (added-children new-kids old-kids)
+              removals (removed-children new-kids old-kids)]
           (doseq [kid removals]
             (try
-              (remove-z-kid watcher-ref zipper-path
-                            kid  (str node "/" kid))
+              (remove-kid watcher-ref (str node "/" kid))
               (catch Exception ex
                 (do
                   (println (str "EXCEPTION IN NODE CHANGED: " ex))
                   (.printStackTrace ex)))))
-          (doseq [kid (added-children n-kids z-kids)]
+          (doseq [kid additions]
             (let [kid-node (str node "/" kid)
                   directory (persistent? client kid-node)]
-              (add-z-kid watcher-ref zipper-path kid directory kid-node)
+              (add-kid watcher-ref directory kid-node)
               (if directory
                 (call-dir-created watcher-ref kid-node)
                 (call-file-created watcher-ref kid-node))
               (start-watching-children watcher-ref kid-node)))))
       :NodeDeleted
-      (do
-        (let [zipper-path (node-zipper-path (wroot watcher-ref) (:path event))
-              parent-z-path (drop-last zipper-path)
-              kid (last zipper-path)]
-          (remove-z-kid watcher-ref parent-z-path kid node)))
+      (remove-kid watcher-ref (:path event))
 
       (println (str "CHILD WATCHER UNCAUGHT EVENT: " event)))))
-
-(defn- zipper-path-exists
-  [watcher-ref path]
-  (tz/find-path (wzipper watcher-ref) path))
 
 (defn- start-watching-children
   [watcher-ref node]
@@ -238,14 +196,15 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
     (doseq [child children]
       (let [child-node (str node "/" child)
             root (wroot watcher-ref)
-            z-path (node-zipper-path root child-node)]
-        (if-not (zipper-path-exists watcher-ref z-path)
+            watched-dir-nodes-ref (:watched-dir-nodes-ref @watcher-ref)
+            watched-file-nodes-ref (:watched-file-nodes-ref @watcher-ref)]
+        ;; if we not already watching this node
+        (if-not (or (contains? @watched-dir-nodes-ref child-node)
+                    (contains? @watched-file-nodes-ref child-node))
           (dosync
            (let [watcher @watcher-ref
-                 zipper (wzipper watcher-ref)
                  directory (persistent? (wclient watcher-ref) child-node)]
-             (add-z-kid watcher-ref (drop-last z-path)
-                        child directory child-node)
+             (add-kid watcher-ref directory child-node)
              (if directory
                (call-dir-created watcher-ref child-node)
                (call-file-created watcher-ref child-node))
@@ -261,15 +220,6 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
         (println (str "START WATCHING ROOT UNCAUGHT EVENT: " (first event)))))
     (if exists
       (do (start-watching-children watcher-ref node)))))
-
-(defn print-tree
-  [original]
-  (loop [loc original]
-    (if-not (z/end? loc)
-      (recur (z/next (do
-                       (println (reverse (tz/path-up loc)))
-                       loc))))))
-
 
 (defn- test-connwatcher
   [event]
@@ -298,15 +248,13 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   (zk/create (wclient watcher-ref) "/testnode/Z2/d2" :persistent? true)
   (zk/create (wclient watcher-ref) "/testnode/Z1/d1/file1.txt" :persistent? false)
   (zk/create (wclient watcher-ref) "/testnode/Z2/d2/file2.txt" :persistent? false)
-  (dosync   (let [watcher @watcher-ref] (print-tree (wzipper watcher-ref))))
   watcher-ref)
 
 
 (defn cdo2
   [watcher-ref]
   (zk/delete-all (wclient watcher-ref) "/testnode/Z2")
-  (zk/delete-all (wclient watcher-ref) "/testnode/Z1")
-  (dosync   (let [watcher @watcher-ref] (print-tree (wzipper watcher-ref)))))
+  (zk/delete-all (wclient watcher-ref) "/testnode/Z1"))
 
 (defn data-example
   [watcher-ref]
