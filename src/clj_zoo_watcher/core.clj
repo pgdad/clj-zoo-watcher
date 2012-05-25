@@ -93,11 +93,6 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
   [new-children old-children]
   (clojure.set/difference new-children old-children))
 
-(defn- removed-children
-  "return return entries that exist in z-children but not in node-children"
-  [new-children old-children]
-  (clojure.set/difference old-children new-children))
-
 (defn- file-data-watcher
   [watcher-ref event]
   (let [path (:path event)
@@ -152,37 +147,38 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
 
 (declare start-watching-children)
 
+(defn- immediate-children
+  "returns the nodes out of 'nodes' that are immediate children of parent-node"
+  [parent-node nodes]
+  (let [pattern (re-pattern (str parent-node "/[^/]*"))
+        kids (filter #(re-matches pattern %) nodes)]
+     kids))
+
 (defn- child-watcher
   [watcher-ref node event]
   (let [client (wclient watcher-ref)
         children (zk/children (wclient watcher-ref) node :watcher (partial child-watcher watcher-ref node))]
     (case (:event-type event)
+      ;; only needed when adding nodes, :NodeDeleted takes care of deletions
       :NodeChildrenChanged
       (do
-        (let [root (wroot watcher-ref)
-              old-kids (clojure.set/union
-                        @(:watched-dir-nodes-ref @watcher-ref)
-                        @(:watched-file-nodes-ref @watcher-ref))
+        (let [old-kids (clojure.set/union
+                        (immediate-children
+                           node
+                           @(:watched-dir-nodes-ref @watcher-ref))
+                        (immediate-children
+                           node
+                           @(:watched-file-nodes-ref @watcher-ref)))
               
-              n-kids (set children)
               new-kids (set (map #(str node "/" %) children))
-              additions (added-children new-kids old-kids)
-              removals (removed-children new-kids old-kids)]
-          (doseq [kid removals]
-            (try
-              (remove-kid watcher-ref (str node "/" kid))
-              (catch Exception ex
-                (do
-                  (println (str "EXCEPTION IN NODE CHANGED: " ex))
-                  (.printStackTrace ex)))))
+              additions (added-children new-kids old-kids)]
           (doseq [kid additions]
-            (let [kid-node (str node "/" kid)
-                  directory (persistent? client kid-node)]
-              (add-kid watcher-ref directory kid-node)
+            (let [directory (persistent? client kid)]
+              (add-kid watcher-ref directory kid)
               (if directory
-                (call-dir-created watcher-ref kid-node)
-                (call-file-created watcher-ref kid-node))
-              (start-watching-children watcher-ref kid-node)))))
+                (call-dir-created watcher-ref kid)
+                (call-file-created watcher-ref kid))
+              (start-watching-children watcher-ref kid)))))
       :NodeDeleted
       (remove-kid watcher-ref (:path event))
 
@@ -231,11 +227,11 @@ file-data-changed is a function that is called when a zookeeper 'file' node data
         node "/testnode"
         w (watcher client "/testnode"
                    test-connwatcher
-                   (fn [dir-node] (println (str "DIRECTORY CREATED CALLBACK: " dir-node)))
-                   (fn [dir-node] (println (str "DIRECTORY DELETED CALLBACK: " dir-node)))
-                   (fn [file-node] (println (str "NODE CREATED CALLBACK: " file-node)))
-                   (fn [file-node] (println (str "NODE DELETED CALLBACK: " file-node)))
-                   (fn [file-node data]
+                   (fn [_ dir-node] (println (str "DIRECTORY CREATED CALLBACK: " dir-node)))
+                   (fn [_ dir-node] (println (str "DIRECTORY DELETED CALLBACK: " dir-node)))
+                   (fn [_ file-node] (println (str "NODE CREATED CALLBACK: " file-node)))
+                   (fn [_ file-node] (println (str "NODE DELETED CALLBACK: " file-node)))
+                   (fn [_ file-node data]
                      (println (str "NODE DATA CALLBACK: "
                                    file-node " DATA: " (String. data "UTF-8")))))]
     w))
