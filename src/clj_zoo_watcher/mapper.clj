@@ -1,4 +1,4 @@
-(ns clj-zoo-watcher.mapper-cache
+(ns clj-zoo-watcher.mapper
   (:require [clj-zoo-watcher.cache :as ca]))
 
 (defn- listener
