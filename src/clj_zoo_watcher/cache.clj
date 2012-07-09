@@ -9,7 +9,6 @@
   [added removed updated reset]
   (proxy [com.netflix.curator.framework.recipes.cache.PathChildrenCacheListener] []
     (childEvent [fWork event]
-      (println (str "PATH CHILD EVENT: " event " TYPE: " (.getType event)))
       (try (case (str (.getType event))
              "CHILD_ADDED" (added event)
              "CHILD_REMOVED" (removed event)
@@ -25,5 +24,5 @@
   (let [c (PathChildrenCache. fWork path true)
         lc (.getListenable c)]
     (.addListener lc (listener added removed updated reset))
-    (.start c)
+    (try (.start c) (catch Exception e (println (str "START C EX: " e))))
     c))

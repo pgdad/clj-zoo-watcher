@@ -8,4 +8,5 @@
   ; :aot :all
   :warn-on-reflection true
   :jar-exclusions [#"project.clj"]
-  :omit-source true)
+  ;:omit-source true
+  )
