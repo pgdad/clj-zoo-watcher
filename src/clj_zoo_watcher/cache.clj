@@ -1,9 +1,7 @@
 (ns clj-zoo-watcher.cache
   (:import (com.netflix.curator.framework.recipes.cache PathChildrenCache
                                                         PathChildrenCacheListener
-                                                        PathChildrenCacheEvent))
-  (:require [zookeeper :as zk]
-            [clj-zoo-watcher.core :as core]))
+                                                        PathChildrenCacheEvent)))
 
 (defn- listener
   [added removed updated reset]
