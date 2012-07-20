@@ -16,7 +16,7 @@
              "RESET" (reset)
              :default (println (str "HIT DEAFULT IN CASE: " event)))
            
-           (catch Exception e (println (str "CATCH in LISTENER: " e)))))))
+           (catch Exception e (do (println (str "CATCH in LISTENER: " e " EVENT: " event)) (.printStackTrace e)))))))
 
 (defn cache
   "added, removed, updated, reset are functions (maybe nil) called for events"
